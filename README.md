@@ -17,7 +17,7 @@ Supported Games:
 |RE4|2050650|✅|?|
 |RE7|418370|✅|?|
 |RE8|1196590|✅|?|
-|RE9|1446780|✅|?|
+|RE9|1446780|✅|✅|
 
 > [!NOTE]
 > I would like to add more games, but these are all the one's I own (except for DD2 and Pragmata, but I had help with those, and MHST3 was the same as the demo).
@@ -68,6 +68,8 @@ This tool supports transferring some games between PC and PS5. You have to load 
 |MH Wilds|Deflate|Mandarin & Deflate||
 |Pragmata|Mandarin|Mandarin|on PS5, use the id 526253637 and change _RegionHash to 3208943443|
 |Dragon's Dogma 2|Mandarin ("Game Profile: DD2 PS5")|Mandarin (Game Profile: "Dragon's Dogma 2")|on PS5, use the id 11957868291195786822. credits to nbo6y for helping find the key |
+|RE Requiem|Mandarin|Mandarin|on PS5, use the id 394424879635983|
+
 
 ## FAQ
 1. Missing Save Files: If you are having trouble finding your steam files, try following this [guide](https://gist.github.com/mi5hmash/47f1be53d213be9b00f2c7e0aa151b11)
