@@ -277,9 +277,9 @@ impl FieldValue {
             FieldValue::Class(v) => v.write(w),
             FieldValue::String(v) => {
                 w.write_align_up(4)?;
-                w.write(&(v.0.len() as u32).to_le_bytes())?;
+                w.write_all(&(v.0.len() as u32).to_le_bytes())?;
                 for e in &v.0 {
-                    w.write(&e.to_le_bytes())?;
+                    w.write_all(&e.to_le_bytes())?;
                 }
                 Ok(())
             }
@@ -287,7 +287,7 @@ impl FieldValue {
             _ => {
                 w.write_align_up(4)?;
                 let size: u32 = self.get_size();
-                w.write(&size.to_le_bytes())?;
+                w.write_all(&size.to_le_bytes())?;
                 self.write_sized(w)?;
                 Ok(())
             }
@@ -328,7 +328,7 @@ impl FieldValue {
             }
             FieldValue::Struct(v) => {
                 for e in &v.data {
-                    w.write(&e.to_le_bytes())?;
+                    w.write_all(&e.to_le_bytes())?;
                 }
                 v.data.len()
             }
@@ -688,17 +688,15 @@ impl Array {
 
     pub fn write<W: Write + Seek>(&self, w: &mut W) -> Result<(), Box<dyn Error>> {
         w.write_align_up(4)?;
-        w.write(&(self.member_type as i32).to_le_bytes())?;
-        w.write(&self.member_size.to_le_bytes())?;
-        w.write(&(self.values.len() as u32).to_le_bytes())?;
-        w.write(&(self.array_type as i32).to_le_bytes())?;
+        w.write_all(&(self.member_type as i32).to_le_bytes())?;
+        w.write_all(&self.member_size.to_le_bytes())?;
+        w.write_all(&(self.values.len() as u32).to_le_bytes())?;
+        w.write_all(&(self.array_type as i32).to_le_bytes())?;
 
-        if self.array_type == ArrayType::Class {
-            if let Some(hashes) = &self.hashes {
-                w.write(&0xffeeffeeu32.to_le_bytes())?;
-                for hash in hashes {
-                    w.write(&hash.to_le_bytes())?;
-                }
+        if self.array_type == ArrayType::Class && let Some(hashes) = &self.hashes {
+            w.write_all(&0xffeeffeeu32.to_le_bytes())?;
+            for hash in hashes {
+                w.write_all(&hash.to_le_bytes())?;
             }
         }
 
@@ -709,9 +707,9 @@ impl Array {
                         if let FieldValue::String(s) = e {
                             w.write_align_up(4)?;
                             let size = s.0.len() as u32;
-                            w.write(&size.to_le_bytes())?;
+                            w.write_all(&size.to_le_bytes())?;
                             for v in &s.0 {
-                                w.write(&v.to_le_bytes())?;
+                                w.write_all(&v.to_le_bytes())?;
                             }
                         } else {
                             return Err("Expected Array of Strings i think hopefully".into());
@@ -793,8 +791,8 @@ impl Field {
     }
 
     pub fn write<W: Write + Seek>(&self, w: &mut W) -> Result<(), Box<dyn Error>> {
-        w.write(&self.hash.to_le_bytes())?;
-        w.write(&(self.field_type as i32).to_le_bytes())?;
+        w.write_all(&self.hash.to_le_bytes())?;
+        w.write_all(&(self.field_type as i32).to_le_bytes())?;
         self.value.write(w)?;
         w.write_align_up(4)?;
         Ok(())
@@ -809,7 +807,7 @@ impl Field {
     }
 
     pub fn is_class_same(&self, other: &Self) -> bool {
-        return self.field_type == other.field_type && self.is_class_same(other)
+        self.field_type == other.field_type && self.is_class_same(other)
     }
 }
 
@@ -844,8 +842,8 @@ impl Class {
     }
 
     pub fn write<W: Write + Seek>(&self, w: &mut W) -> Result<(), Box<dyn Error>> {
-        w.write(&self.num_fields.to_le_bytes())?;
-        w.write(&self.hash.to_le_bytes())?;
+        w.write_all(&self.num_fields.to_le_bytes())?;
+        w.write_all(&self.hash.to_le_bytes())?;
         for field in &self.fields {
             field.write(w)?;
         }
@@ -922,49 +920,3 @@ impl Class {
         self.get_value_mut(name)?.as_array_mut()
     }
 }
-
-// TODO: macroize this stuff
-/*impl TryFrom<&Struct> for Mandrake {
-  type Error = Box<dyn Error>;
-  fn try_from(value: &Struct) -> Result<Self, Self::Error> {
-  if value.data.len() > 16 {
-  return Err("Data Length > 16 for Mandrake".into());
-  }
-  let mut d = Cursor::new(&value.data);
-  let v = d.read_i64()?;
-  let m = d.read_i64()?;
-  Ok(Mandrake { v, m })
-  }
-  }
-
-  impl TryFrom<&Struct> for Vec2 {
-  type Error = Box<dyn Error>;
-  fn try_from(value: &Struct) -> Result<Self, Self::Error> {
-  let data: [u8; 16] = value.data.as_slice().try_into()?;
-  Ok(bytemuck::cast(data))
-  }
-  }
-
-  impl TryFrom<&Struct> for Vec3 {
-  type Error = Box<dyn Error>;
-  fn try_from(value: &Struct) -> Result<Self, Self::Error> {
-  let data: [u8; 16] = value.data.as_slice().try_into()?;
-  Ok(bytemuck::cast(data))
-  }
-  }
-
-  impl TryFrom<&Struct> for Vec4 {
-  type Error = Box<dyn Error>;
-  fn try_from(value: &Struct) -> Result<Self, Self::Error> {
-  let data: [u8; 16] = value.data.as_slice().try_into()?;
-  Ok(bytemuck::cast(data))
-  }
-  }
-
-  impl TryFrom<&Struct> for Color {
-  type Error = Box<dyn Error>;
-  fn try_from(value: &Struct) -> Result<Self, Self::Error> {
-  let data: [u8; 4] = value.data.as_slice().try_into()?;
-  Ok(bytemuck::cast(data))
-  }
-  }*/

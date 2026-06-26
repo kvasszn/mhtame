@@ -3,7 +3,7 @@ pub mod copy;
 use std::{collections::HashMap, io::Cursor, sync::Arc, time::Instant};
 
 use anyhow::Result;
-use eframe::egui::{self, CollapsingHeader, Frame, Id, InnerResponse, Layout, ScrollArea, TextEdit, Ui, collapsing_header::CollapsingState};
+use eframe::egui::{self, CollapsingHeader, Frame, InnerResponse, Layout, ScrollArea, TextEdit, Ui, collapsing_header::CollapsingState};
 use serde::{Deserialize, Serialize};
 use ree_lib::{context::EngineContext, rsz::{self, FieldInfo, RszMap, TypeInfo, Value, deserializer::RszDeserializer}, types::{Mandrake, StringU16, Vec2, Vec3, Vec4, Color}};
 
@@ -642,8 +642,9 @@ impl Editable for Struct {
             Some(name) => {
                 // this returns
                 try_edit_as!(name, &mut self.data, ui, ctx, {
+                    "via.Color" => Color,
                     "via.vec2" => Vec2,
-                    "via.vec3" => Vec4,
+                    "via.vec3" => Vec3,
                     "via.vec4" => Vec4,
                     "via.rds.Mandrake" => Mandrake,
                 });

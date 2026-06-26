@@ -1,4 +1,5 @@
 //pub mod corrupt;
+pub mod json;
 pub mod eval;
 pub mod crypto;
 pub mod game;
@@ -21,10 +22,11 @@ use flate2::{
 
 use crypto::Mandarin;
 use ree_lib::util::*;
+use serde::{Deserialize, Serialize};
 use util::{WriteAlign, align_up, seek_align_up};
 
 bitflags! {
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub struct SaveFlags: u32 {
         const BLOWFISH = 0x1;
         const HAS_ID = 0x2;
@@ -45,7 +47,7 @@ impl SaveFlags {
             Game::PRAGMATA => SaveFlags::MANDARIN,
             Game::MHRISE | Game::SF6 => SaveFlags::CITRUS,
             Game::RE2 | Game::RE3 | Game::RE7 | Game::RE8 => SaveFlags::BLOWFISH | SaveFlags::HAS_ID,
-            Game::RE4 => SaveFlags::LIME,
+            Game::RE4 | Game::DD2PS5 => SaveFlags::LIME,
             _ => SaveFlags::empty(),
         }
     }
@@ -271,7 +273,7 @@ impl SaveFile {
                 if options.game.get_is_lime() {
                     log::info!("Doing Lime instead of Mandarin for RE4");
                     let id = if let Some((base, count)) = options.brute_force {
-                        let id = Lime::brute_force(&data, decrypted_len, options.game, base, count)
+                        let id = Lime::brute_force(data, decrypted_len, options.game, base, count)
                             .ok_or(SaveError::RequiresID(SaveFlags::LIME))?;
                         options.id = Some(id);
                         id
@@ -303,7 +305,7 @@ impl SaveFile {
                             .ok_or(SaveError::RequiresID(SaveFlags::MANDARIN))?
                     };
                     let key = options.game.get_key_from_steamid(id);
-                    let decrypted = mandarin.decrypt(&data, decrypted_len as u64, key)?;
+                    let decrypted = mandarin.decrypt(data, decrypted_len, key)?;
                     data[..decrypted.len()].copy_from_slice(&decrypted);
                     cursor.get_mut().truncate(offset + decrypted.len());
                     log::info!("Decrypted Mandarin");
@@ -314,11 +316,11 @@ impl SaveFile {
                         .ok_or(SaveError::RequiresID(SaveFlags::CITRUS))?;
                 let citrus = Citrus::new(key, options.curve_index);
                 let mut curve_index = options.curve_index;
-                if let Some(curve) = citrus.brute_force_find_params(&data, decrypted_len as usize) {
+                if let Some(curve) = citrus.brute_force_find_params(data, decrypted_len as usize) {
                     curve_index = Some(curve.index as usize);
                 }
                 let citrus = Citrus::new(key, curve_index);
-                let decrypted = citrus.decrypt(&data, decrypted_len as usize).unwrap();
+                let decrypted = citrus.decrypt(data, decrypted_len as usize).unwrap();
                 options.curve_index = curve_index;
                 data[..decrypted.len()].copy_from_slice(&decrypted);
                 cursor.get_mut().truncate(offset + decrypted.len());

@@ -2,7 +2,8 @@ use std::{collections::HashMap, error::Error, io::Write, ops::Range, path::{Path
 
 use eframe::egui::{ComboBox, DragValue, Ui};
 use ree_lib::{assets::bundle::Bundle, context::EngineContext, enums::EnumMap, rsz::RszMap};
-use ree_save_core::{edit::{EditContext, Editable, copy::CopyBuffer}, game_context::GameData, save::{SaveFile, SaveOptions, game::Game}};
+use ree_save_core::{edit::{EditContext, Editable, copy::CopyBuffer}, game_context::GameData, save::{SaveFile, SaveOptions, game::Game, json}};
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::{config::Config, dialog::{AsyncFileDialog, DialogType}, steam::{Steam}};
@@ -35,6 +36,7 @@ pub struct SaveFileView {
 
     pub file_picker: AsyncFileDialog,
     save_as_picker: AsyncFileDialog,
+    json_save_picker: AsyncFileDialog,
 
     // Save Options
     brute_force: bool,
@@ -55,6 +57,8 @@ impl SaveFileView {
             curve_index: None,
             file_picker: AsyncFileDialog::new().filter("bin", &["bin", "*"])
                 .title("Browse"),
+            json_save_picker: AsyncFileDialog::new().filter("json", &["json", "*"])
+                .title("Save As").dialog_type(DialogType::Save),
             save_as_picker: AsyncFileDialog::new().filter("bin", &["bin", "*"])
                 .title("Save As").dialog_type(DialogType::Save),
             dump: false,
@@ -104,6 +108,14 @@ impl SaveFileView {
                         );
                     }
                 });
+
+            if ui.button("Save Json").clicked() {
+                self.save_json(game_context, self.file_picker.selected_file.clone(), config);
+            }
+
+            if ui.button("Save Json As").clicked() {
+                self.save_json(game_context, self.json_save_picker.selected_file.clone(), config);
+            }
         });
 
         ui.horizontal(|ui| {
@@ -239,6 +251,7 @@ impl SaveFileView {
             return;
         };
 
+        // TODO: Is this bugged af rn
         if path.exists() && !path.is_file() {
             self.last_error = Some(format!("{path:?} is not a file").into());
             return;
@@ -265,6 +278,65 @@ impl SaveFileView {
                         Ok(data) => {
                             match f.write_all(&data) {
                                 Ok(_) => log::info!("Save File to {path:?}"),
+                                Err(e) => self.last_error = Some(Box::new(e)),
+                            }
+                        }
+                        Err(e) => self.last_error = Some(Box::new(e)),
+                    }
+                }
+                Err(e) => {
+                    self.last_error = Some(Box::new(e));
+                },
+            }
+
+        }
+    }
+
+    fn save_json(&mut self, game_context: Option<&GameData>, path: Option<PathBuf>, config: &Config) {
+        log::info!("Saving file to {path:?}");
+        let Some(mut path) = path else {
+            self.last_error = Some("No save location to save to".into());
+            return;
+        };
+        path.set_extension("json");
+
+        if let Some(save_file) = &self.save_file {
+            let empty_rsz_map = RszMap::default();
+            let empty_assets = Bundle::default();
+            let empty_enums = EnumMap::default();
+
+            // verbose but whatever who cares
+            let rsz_map = if let Some(game_context) = game_context {
+                &game_context.rsz
+            } else {
+                &empty_rsz_map
+            };
+
+            let assets = if let Some(game_context) = game_context {
+                &game_context.bundle
+            } else {
+                &empty_assets
+            };
+
+            let enums = if let Some(game_context) = game_context {
+                &game_context.enums
+            } else {
+                &empty_enums
+            };
+
+            let engine = EngineContext::new(config.language, rsz_map, assets, enums);
+
+            let view = json::SaveFileView {
+                file: save_file,
+                ctx: &engine
+            };
+            match std::fs::File::create(&path) {
+                Ok(mut f) => {
+                    let json = serde_json::to_string_pretty(&view);
+                    match json {
+                        Ok(json) => {
+                            match f.write_all(json.as_bytes()) {
+                                Ok(_) => log::info!("Save Json File to {path:?}"),
                                 Err(e) => self.last_error = Some(Box::new(e)),
                             }
                         }

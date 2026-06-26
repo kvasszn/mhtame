@@ -48,7 +48,7 @@ simd-json = "0.17.0"
 bytemuck = {version = "1.24.0", features = ["derive"]}
 bytemuck_derive = "1.10.2"
 
-bitflags = "2"
+bitflags = { version = "2", features = ["serde"] }
 indexmap = { version = "2.7.0", features = ["serde"] }
 
 mlua = {version = "0.11.5", features = ["lua54", "vendored", "async", "send"], optional=true }
