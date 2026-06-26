@@ -4,7 +4,7 @@ use eframe::egui::{Ui};
 use egui_dock::tab_viewer::OnCloseResponse;
 
 use ree_save_core::{
-    game_context::{GameData}, save::game::Game
+    edit::copy::CopyBuffer, game_context::GameData, save::game::Game
 };
 
 use crate::{config::Config, tab::{self, TabType}};
@@ -12,7 +12,8 @@ use crate::{config::Config, tab::{self, TabType}};
 pub struct Viewer<'a> {
     pub game_contexts: &'a Arc<RwLock<HashMap<Game, GameData>>>,
     pub config: &'a Config,
-    pub game_load_queue: &'a mut VecDeque<Game>
+    pub game_load_queue: &'a mut VecDeque<Game>,
+    pub copy_buffer: &'a mut CopyBuffer
 }
 
 impl<'a> egui_dock::TabViewer for Viewer<'a> {
@@ -26,7 +27,7 @@ impl<'a> egui_dock::TabViewer for Viewer<'a> {
                     if !game_contexts.contains_key(&save_file.game) && !self.game_load_queue.contains(&save_file.game) {
                         self.game_load_queue.push_back(save_file.game);
                     }
-                    save_file.ui(ui, self.config, &game_contexts);
+                    save_file.ui(ui, self.config, &game_contexts, self.copy_buffer);
                 }
             }
         });

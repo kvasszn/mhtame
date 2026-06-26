@@ -2,7 +2,7 @@ use std::{collections::HashMap, error::Error, io::Write, ops::Range, path::{Path
 
 use eframe::egui::{ComboBox, DragValue, Ui};
 use ree_lib::{assets::bundle::Bundle, context::EngineContext, enums::EnumMap, rsz::RszMap};
-use ree_save_core::{edit::{EditContext, Editable}, game_context::GameData, save::{SaveFile, SaveOptions, game::Game}};
+use ree_save_core::{edit::{EditContext, Editable, copy::CopyBuffer}, game_context::GameData, save::{SaveFile, SaveOptions, game::Game}};
 use uuid::Uuid;
 
 use crate::{config::Config, dialog::{AsyncFileDialog, DialogType}, steam::{Steam}};
@@ -61,7 +61,7 @@ impl SaveFileView {
         }
     }
 
-    pub fn ui(&mut self, ui: &mut Ui, config: &Config, game_contexts: &HashMap<Game, GameData>) {
+    pub fn ui(&mut self, ui: &mut Ui, config: &Config, game_contexts: &HashMap<Game, GameData>, copy_buffer: &mut CopyBuffer) {
         let game_context = game_contexts.get(&self.game);
 
         ui.horizontal(|ui| {
@@ -130,9 +130,9 @@ impl SaveFileView {
 
         if self.brute_force {
             ui.horizontal(|ui| {
-                ui.label("Base:");
+                ui.label("Start:");
                 ui.add(DragValue::new(&mut self.brute_force_range.start).speed(1.0).hexadecimal(8, true, false));
-                ui.label("Count:");
+                ui.label("End:");
                 ui.add(DragValue::new(&mut self.brute_force_range.end).speed(1.0).hexadecimal(8, true, false));
             });
         }
@@ -183,6 +183,7 @@ impl SaveFileView {
                 remaps,
                 path: &mut path,
                 query_cache: &mut query_cache,
+                copy_buffer,
             };
             save_file.ui(ui, &mut ctx);
         }
@@ -203,7 +204,7 @@ impl SaveFileView {
                         options = options.id(id);
                     }
                     if self.brute_force {
-                        options = options.brute_force(self.brute_force_range.start, self.brute_force_range.end);
+                        options = options.brute_force(self.brute_force_range.start, self.brute_force_range.end - self.brute_force_range.start);
                     }
                     if let Some(curve_index) = self.curve_index {
                         options = options.curve_index(curve_index);

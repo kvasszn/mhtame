@@ -6,7 +6,7 @@ use eframe::{
 };
 use egui_dock::{DockArea, DockState};
 use ree_lib::language::Language;
-use ree_save_core::{game_context::{GameConfigs, GameData, load_game_configs}, save::game::Game};
+use ree_save_core::{edit::copy::CopyBuffer, game_context::{GameConfigs, GameData, load_game_configs}, save::game::Game};
 
 
 use crate::{config::{Config, load_config_checked}, tab::{SaveFileView, Tab}, viewer::Viewer};
@@ -21,6 +21,7 @@ pub struct App {
     loading_game: Option<Game>,
     game_data_receiver: Receiver<GameData>,
     game_data_sender: Sender<GameData>,
+    copy_buffer: CopyBuffer
 }
 
 impl App {
@@ -40,6 +41,7 @@ impl App {
             loading_game: None,
             game_data_sender: tx,
             game_data_receiver: rx,
+            copy_buffer: CopyBuffer::default()
         }
     }
 }
@@ -103,6 +105,7 @@ impl eframe::App for App {
                     game_contexts: &self.game_contexts,
                     config: &self.config,
                     game_load_queue: &mut self.game_load_queue,
+                    copy_buffer: &mut self.copy_buffer
                 };
                 DockArea::new(&mut self.tree)
                     .show_close_buttons(true)

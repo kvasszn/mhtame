@@ -232,7 +232,8 @@ impl SaveFile {
         }
 
         // flags.is_empty is for when i fix a dumped save and just want it to load
-        if flags.intersects(SaveFlags::MANDARIN | SaveFlags::CITRUS | SaveFlags::LIME) || flags.is_empty() {
+        // if SaveFlags == 0x0, the serialized stream starts at offset 0xc (from mhst3)
+        if flags.intersects(SaveFlags::MANDARIN | SaveFlags::CITRUS | SaveFlags::LIME) {
             seek_align_up(&mut cursor, 16)?;
         }
 
@@ -286,7 +287,9 @@ impl SaveFile {
                 } else {
                     let mandarin = Mandarin::init_from_game(options.game)?;
                     let id = if let Some((base, count)) = options.brute_force {
-                        let id = mandarin.brute_force(&data, decrypted_len, options.game, base, count);
+                        let id = mandarin.brute_force(data, decrypted_len, options.game, base, count);
+                        //let id = mandarin.brute_force_binary(data, decrypted_len, options.game, "/home/nikola/mh/eboot_re9/eboot.bin");
+                        //let id = mandarin.brute_force_binary(data, decrypted_len, options.game, "/home/nikola/programming/save-files/re9ps5/PPSA30803/sdimg_SAVESERVICE-LINE-0--1/sce_sys/param.sfo");
                         if id == 0 {
                             log::warn!("likely could not brute force the id");
                         } else {
@@ -361,6 +364,8 @@ impl SaveFile {
     // just pass in the data as mutable so that we can do decryption in place, no copies, no reference
     pub fn read_save(data: Vec<u8>, options: &mut SaveOptions) -> error::Result<Self> {
         let (data, data_offset, blowfish_options, flags): (Vec<u8>, u64, u32, SaveFlags) = Self::process_bytes_to_stream(data, options)?;
+        // TODO: the dump should be with SaveFlags ^ ProcessedSaveFlags (to remove any save flags
+        // that were undone)
         if options.dump {
             std::fs::create_dir_all("./outputs")?;
             std::fs::write("./outputs/dump.bin", &data)?;

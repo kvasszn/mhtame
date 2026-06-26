@@ -1,11 +1,13 @@
+pub mod copy;
+
 use std::{collections::HashMap, io::Cursor, sync::Arc, time::Instant};
 
 use anyhow::Result;
-use eframe::egui::{self, CollapsingHeader, Frame, ScrollArea, TextEdit, Ui};
+use eframe::egui::{self, CollapsingHeader, Frame, Id, InnerResponse, Layout, ScrollArea, TextEdit, Ui, collapsing_header::CollapsingState};
 use serde::{Deserialize, Serialize};
 use ree_lib::{context::EngineContext, rsz::{self, FieldInfo, RszMap, TypeInfo, Value, deserializer::RszDeserializer}, types::{Mandrake, StringU16, Vec2, Vec3, Vec4, Color}};
 
-use crate::save::{SaveFile, SaveFlags, remap::Remap, types::{Array, Class, EnumValue, Field, FieldValue, Struct}};
+use crate::{edit::{copy::CopyBuffer}, save::{SaveFile, SaveFlags, remap::Remap, types::{Array, Class, EnumValue, Field, FieldValue, Struct}}};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PathNode {
@@ -61,6 +63,7 @@ pub struct EditContext<'a> {
     pub config: &'a EditorConfig,
     pub path: &'a mut Vec<PathNode>,
     pub query_cache: &'a mut HashMap<(String, String), Value>,
+    pub copy_buffer: &'a mut CopyBuffer
 }
 
 impl<'a> EditContext<'a> {
@@ -201,7 +204,7 @@ impl Editable for Class {
     fn ui(&mut self, ui: &mut egui::Ui, ctx: &mut EditContext) {
         ctx.path.push(PathNode::Class(self.hash));
 
-        for  field in self.fields.iter_mut() {
+        for field in self.fields.iter_mut() {
             field.ui(ui, ctx);
         }
 
@@ -248,39 +251,50 @@ impl Editable for Array {
             ui.push_id(i, |ui| {
                 ctx.path.push(PathNode::Index(i));
                 match value {
-                    FieldValue::Class(c) => {
-                        let type_info = ctx.engine_context.rsz_map.get_by_hash(c.hash); // idfk
-                                                                                        // backup ig
-                                                                                        // stupid
-                                                                                        // but
-                                                                                        // whatevers
-                        let index_label = if let Some(type_label) = get_type_label().or_else(|| type_info.map(|t| &t.name)) {
-                            if let Some(formatted) = ctx.remap_format(&type_label.replace("[]", ""), value) {
-                                format!("{i}: {formatted}")
-                            } else {
-                                format!("{}: {type_label}", i)
+                    FieldValue::Class(_) | FieldValue::Array(_) => {
+                        let index_label = match value {
+                            FieldValue::Class(c) => {
+                                let type_info = ctx.engine_context.rsz_map.get_by_hash(c.hash);
+                                let label = get_type_label().or_else(|| type_info.map(|t| &t.name));
+
+                                if let Some(type_label) = label {
+                                    if let Some(formatted) = ctx.remap_format(&type_label.replace("[]", ""), value) {
+                                        format!("{i}: {formatted}")
+                                    } else {
+                                        format!("{i}: {type_label}")
+                                    }
+                                } else {
+                                    format!("{i}: ")
+                                }
                             }
-                        } else {
-                            format!("{}: ", i)
+                            FieldValue::Array(_) => {
+                                if let Some(type_label) = get_type_label() 
+                                    && let Some(formatted) = ctx.remap_format(&type_label.replace("[]", ""), value) 
+                                {
+                                    format!("{i}: {formatted}")
+                                } else {
+                                    format!("{i}:")
+                                }
+                            }
+                            _ => unreachable!(),
                         };
-                        egui::CollapsingHeader::new(index_label)
-                            .id_salt(i)
-                            .show(ui, |ui| {
+
+                        collapsing_header_with_buttons(
+                            ui, ctx, value, &index_label, 
+                            |ui, ctx, value| {
+                                ui.with_layout(Layout::left_to_right(egui::Align::Center), |ui| {
+                                    if ui.button("Copy").clicked() {
+                                        *ctx.copy_buffer = CopyBuffer::FieldValue(value.clone())
+                                    }
+                                    if *ctx.copy_buffer != CopyBuffer::Null && ui.button("Paste").clicked() && let Some(pasted) = ctx.copy_buffer.paste_into(value) {
+                                        *value = pasted;
+                                    }
+                                });
+                            }, 
+                            |ui, ctx, value| {
                                 value.ui(ui, ctx);
-                            });
-                    }
-                    FieldValue::Array(_) => {
-                        let index_label = if let Some(type_label) = get_type_label() 
-                            && let Some(formatted) = ctx.remap_format(&type_label.replace("[]", ""), value) {
-                                format!("{i}: {formatted}")
-                            } else {
-                                format!("{}:", i)
-                            };
-                        egui::CollapsingHeader::new(index_label)
-                            .id_salt(i)
-                            .show(ui, |ui| {
-                                value.ui(ui, ctx);
-                            });
+                            }
+                        );
                     }
                     _ => {
                         let index_label = format!("{}:", i);
@@ -408,25 +422,40 @@ impl Editable for Field {
                 type_label = remapped_type.clone();
         }
 
-        ui.push_id(self.hash, |ui| {
-            match &mut self.value {
-                FieldValue::Class(_) | FieldValue::Array(_) => {
-                    let header_label = format!("{}: {}", field_name, type_label);
-                    egui::CollapsingHeader::new(header_label)
-                        .show(ui, |ui| {
-                            self.value.ui(ui, ctx);
-                        });
-                }
-                _ => {
-                    ui.horizontal(|ui| {
-                        ui.label(format!("{}:", field_name));
-                        ctx.draw_remapped_dropdown(ui, &mut self.value, &type_label, self.hash);
-                        self.value.ui(ui, ctx);
-                    });
-                }
+        // handle custom class types here
+        match type_label.as_str() {
+            "app.savedata.cPhoto" => {},
+            "ace.Bitset" => {}, // TODO: need a way to handle generics?
+            "app.savedata.cEquipWork" => {},
+            _ => {
+                ui.push_id(self.hash, |ui| {
+                    match &mut self.value {
+                        FieldValue::Class(_) | FieldValue::Array(_) => {
+                            let header_label = format!("{}: {}", field_name, type_label);
+                            collapsing_header_with_buttons(ui, ctx, &mut self.value, &header_label, |ui, ctx, value| {
+                                ui.with_layout(Layout::left_to_right(egui::Align::Center), |ui| {
+                                    if ui.button("Copy").clicked() {
+                                        *ctx.copy_buffer = CopyBuffer::FieldValue(value.clone())
+                                    }
+                                    if ui.button("Paste").clicked() && let Some(pasted) = ctx.copy_buffer.paste_into(value) {
+                                        *value = pasted;
+                                    }
+                                });
+                            }, |ui, ctx, value| {
+                                value.ui(ui, ctx);
+                            });
+                        }
+                        _ => {
+                            ui.horizontal(|ui| {
+                                ui.label(format!("{}:", field_name));
+                                ctx.draw_remapped_dropdown(ui, &mut self.value, &type_label, self.hash);
+                                self.value.ui(ui, ctx);
+                            });
+                        }
+                    }
+                });
             }
-        });
-
+        }
         ctx.path.pop();
     }
 }
@@ -457,6 +486,45 @@ impl Editable for FieldValue {
             }
         }
     }
+}
+
+pub fn collapsing_header_with_buttons<T,R>(
+    ui: &mut Ui,
+    ctx: &mut EditContext,
+    state_data: &mut T,
+    header_label: &str,
+    add_header_content: impl FnOnce(&mut Ui, &mut EditContext, &mut T),
+    add_body_content: impl FnOnce(&mut Ui, &mut EditContext, &mut T) -> R,
+) -> Option<InnerResponse<R>> {
+    let id = ui.id().with(header_label);
+    let toggle_id = id.with("toggle_flag");
+    let mut state = CollapsingState::load_with_default_open(ui.ctx(), id, false);
+
+    let should_toggle = ui.data_mut(|d| d.remove_temp::<bool>(toggle_id).unwrap_or(false));
+    if should_toggle {
+        state.toggle(ui);
+    }
+
+    let res = state.show_header(ui, |ui| {
+        let label_response = ui.add(
+            egui::Label::new(header_label)
+            .selectable(false)
+            .sense(egui::Sense::click())
+        );
+
+        if label_response.clicked() {
+            ui.data_mut(|d| d.insert_temp(toggle_id, true));
+            ui.ctx().request_repaint();
+        }
+
+        ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
+            add_header_content(ui, ctx, state_data);
+        });
+    })
+    .body(|ui| {
+        add_body_content(ui, ctx, state_data)
+    });
+    res.2
 }
 
 macro_rules! derive_editable_num {
@@ -544,7 +612,7 @@ macro_rules! try_edit_as {
     ($name:expr, $data:expr, $ui:expr, $ctx:expr, { $( $pat:literal => $ty:ty ),* $(,)? }) => {
         match $name {
             $( $pat => try_edit_as!($data, $ui, $ctx, $ty), )*
-            _ => {}
+                _ => {}
         }
     };
 }
@@ -602,7 +670,7 @@ pub fn deserialize_struct<'a>(type_info: &'a TypeInfo, data: &[u8], rsz_map: &'a
             let value = deserializer.deserialize_field(field, type_info)?;
             Ok((field, value))
         })
-        .collect()
+    .collect()
 }
 
 pub fn render_struct_by_schema(ui: &mut Ui, ctx: &mut EditContext, type_info: &TypeInfo, data: &[u8]) -> Result<()> {

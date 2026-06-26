@@ -352,9 +352,7 @@ impl FieldValue {
             _ => 0,
         }
     }
-}
 
-impl FieldValue {
     pub fn as_class(&self) -> Option<&Class> {
         match self {
             FieldValue::Class(b) => Some(b),
@@ -440,6 +438,16 @@ impl FieldValue {
             _ => return None,
         };
         Some(val)
+    }
+
+    pub fn is_class_same(&self, other: &Self) -> bool {
+        let class_hash_same = match (&self, &other) {
+            (FieldValue::Class(a), FieldValue::Class(b)) => {
+                a.hash == b.hash
+            }
+            _ => false
+        };
+        class_hash_same
     }
 }
 
@@ -797,6 +805,10 @@ impl Field {
 
     pub fn get_mut<'a, T: TryFromValueMut<'a>>(&'a mut self) -> Option<T> {
         self.value.get_mut::<T>()
+    }
+
+    pub fn is_class_same(&self, other: &Self) -> bool {
+        return self.field_type == other.field_type && self.is_class_same(other)
     }
 }
 
