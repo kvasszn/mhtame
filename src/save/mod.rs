@@ -20,7 +20,8 @@ use flate2::{
 };
 
 use crypto::Mandarin;
-use util::{WriteAlign, align_up, murmur3, seek_align_up};
+use ree_lib::util::*;
+use util::{WriteAlign, align_up, seek_align_up};
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -155,7 +156,7 @@ impl SaveFile {
         let mut end_hash = [0u8; 4];
         end_hash.copy_from_slice(&data[len-4..len]);
         let end_hash = u32::from_le_bytes(end_hash);
-        let file_hash = murmur3(&data[..(len - 4)], 0xffffffff);
+        let file_hash = murmur3(&data[..(len - 4)]);
         if end_hash != file_hash {
             log::warn!(
                 "[File Hash Check] Invalid File Hashes: target={:x}, calculated={:x}",
@@ -482,7 +483,7 @@ impl SaveFile {
         let aligned_len = align_up(file_buf.len(), 4);
         file_buf.resize(aligned_len, 0);
 
-        let file_hash = murmur3(&file_buf, 0xffffffff);
+        let file_hash = murmur3(&file_buf);
         file_buf.extend_from_slice(&file_hash.to_le_bytes());
 
         Ok(file_buf)

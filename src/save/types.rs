@@ -7,7 +7,8 @@ use std::error::Error;
 use std::io::{Read, Seek, Write};
 use strum::Display;
 
-use util::*;
+use ree_lib::util::*;
+use util::{WriteAlign, ReadExt, SeekExt};
 
 #[derive(Debug, Clone)]
 pub enum Ref {
@@ -864,7 +865,7 @@ impl Class {
     }
 
     pub fn find<'a>(&'a self, name: &'a str) -> Option<usize> {
-        let hash = murmur3(name, 0xffffffff);
+        let hash = murmur3(name);
         self.fields.iter().enumerate().find_map(
             |(i, f)| {
                 if f.hash == hash { Some(i) } else { None }
@@ -872,12 +873,12 @@ impl Class {
         )
     }
     pub fn get_field<'a>(&'a self, name: &'a str) -> Option<&'a Field> {
-        let hash = murmur3(name, 0xffffffff);
+        let hash = murmur3(name);
         self.fields.iter().find(|f| f.hash == hash)
     }
 
     pub fn get_field_mut<'a>(&'a mut self, name: &'a str) -> Option<&'a mut Field> {
-        let hash = murmur3(name, 0xffffffff);
+        let hash = murmur3(name);
         self.fields.iter_mut().find(|f| f.hash == hash)
     }
 
