@@ -13,6 +13,10 @@ members = [
 [lib]
 crate-type = ["rlib"]
 
+[[bin]]
+name = "pack"
+path = "src/bin/pack.rs"
+
 [features]
 default = ["scripting"]
 scripting = ["dep:mlua"]
@@ -87,6 +91,7 @@ anyhow = "1.0.102"
 strum = { version = "0.28.0", features = ["derive"] }
 strum_macros = "0.28.0"
 web-time = "1.1.0"
+bincode = "2"
 
 
 [target.'cfg(target_os = "linux")'.dependencies]

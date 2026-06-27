@@ -130,7 +130,7 @@ impl eframe::App for App {
                 self.loading_game = Some(game);
                 std::thread::spawn(move || {
                     log::info!("trying to load {:?} for {:?}", game_config, game);
-                    let game_data = match GameData::try_from(&game_config) {
+                    let game_data = match GameData::load(&game_config, false) {
                         Ok(game_data) => game_data,
                         Err(e) => {
                             log::error!("{e}: Could not load game data {:?}", game_config);

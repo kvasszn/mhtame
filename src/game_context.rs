@@ -1,8 +1,10 @@
-use std::{collections::HashMap, path::{PathBuf}};
+use std::{collections::HashMap, path::{Path, PathBuf}};
 use ree_lib::{assets::bundle::Bundle, enums::{EnumMap, load_enum_map}, rsz::RszMap};
 use serde::Deserialize;
 
 use crate::save::{game::Game, remap::{Remap, get_asset_paths}};
+
+pub type GameConfigs = HashMap<Game, GamePaths>;
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct GamePaths {
@@ -12,14 +14,6 @@ pub struct GamePaths {
     pub bundle: Option<String>,
 }
 
-pub type GameConfigs = HashMap<Game, GamePaths>;
-
-pub fn load_game_configs(path: &str) -> anyhow::Result<GameConfigs> {
-    let data = std::fs::read_to_string(path)?;
-    Ok(serde_json::from_str(&data)?)
-}
-
-
 pub struct GameData {
     pub rsz: RszMap,
     pub enums: EnumMap,
@@ -27,47 +21,62 @@ pub struct GameData {
     pub bundle: Bundle
 }
 
-impl TryFrom<&GamePaths> for GameData {
-    type Error = anyhow::Error;
-    fn try_from(value: &GamePaths) -> Result<Self, Self::Error> {
-        let rsz = if let Some(path) = &value.rsz {
-            let data = std::fs::read(path)?;
-            serde_json::from_slice(&data)?
+impl GameData {
+    pub fn load(paths: &GamePaths, force_raw: bool) -> anyhow::Result<Self> {
+        let rsz:    RszMap                 = load_json(paths.rsz.as_ref(),    "rsz map")?;
+        let enums:  EnumMap                = load_enum(paths.enums.as_ref())?;
+        let remaps: HashMap<String, Remap> = load_json(paths.remaps.as_ref(), "remaps")?;
+
+        let bundle = if force_raw {
+            load_bundle_raw(&remaps, &rsz)
         } else {
-            log::info!("Default rszmap");
-            RszMap::default()
+            load_bundle(paths.bundle.as_deref(), &remaps, &rsz)?
         };
 
-        let enums = if let Some(ref path) = value.enums {
-            load_enum_map(&PathBuf::from(&path))?
-        } else {
-            log::info!("Default enums loaded");
-            EnumMap::default()
-        };
-
-        let remaps: HashMap<String, Remap> = if let Some(path) = &value.remaps {
-            let data = std::fs::read(path)?;
-            serde_json::from_slice(&data)?
-        } else {
-            log::info!("Default remap loaded");
-            HashMap::default()
-        };
-
-        let bundle = if let Some(ref _path) = value.bundle {
-            Bundle::default()
-        } else {
-            // if the bundle doesnt exist, load the assets based on the remap
-            let paths = get_asset_paths(&remaps);
-            let mut bundle = Bundle::default();
-            bundle.load_from_paths(paths, &rsz);
-            bundle
-        };
-
-        Ok(Self {
-            rsz,
-            enums,
-            remaps,
-            bundle,
-        })
+        Ok(Self { rsz, enums, remaps, bundle })
     }
 }
+
+
+pub fn load_game_configs(path: &str) -> anyhow::Result<GameConfigs> {
+    let data = std::fs::read_to_string(path)?;
+    Ok(serde_json::from_str(&data)?)
+}
+
+fn load_json<T: serde::de::DeserializeOwned + Default>(path: Option<&String>, label: &str) -> anyhow::Result<T> {
+    match path {
+        Some(p) => Ok(serde_json::from_slice(&std::fs::read(p)?)?),
+        None => {
+            log::info!("No {} path configured, using default", label);
+            Ok(T::default())
+        }
+    }
+}
+
+fn load_enum(path: Option<&String>) -> anyhow::Result<EnumMap> {
+    match path {
+        Some(p) => Ok(load_enum_map(&PathBuf::from(p))?),
+        None => {
+            log::info!("No enums path configured, using default");
+            Ok(EnumMap::default())
+        }
+    }
+}
+
+fn load_bundle(path: Option<&str>, remaps: &HashMap<String, Remap>, rsz: &RszMap) -> anyhow::Result<Bundle> {
+    if let Some(p) = path.map(Path::new).filter(|p| p.exists()) {
+        log::info!("Loading bundle from {}", p.display());
+        let data = std::fs::read(p)?;
+        Ok(bincode::decode_from_slice::<Bundle, _>(&data, bincode::config::standard())?.0)
+    } else {
+        Ok(load_bundle_raw(remaps, rsz))
+    }
+}
+
+fn load_bundle_raw(remaps: &HashMap<String, Remap>, rsz: &RszMap) -> Bundle {
+    log::info!("Loading assets from raw remap paths");
+    let mut bundle = Bundle::default();
+    bundle.load_from_paths(get_asset_paths(remaps), rsz);
+    bundle
+}
+

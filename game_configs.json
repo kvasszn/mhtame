@@ -2,7 +2,8 @@
 	"MHWILDS": {
 		"rsz": "assets/mhwilds/rszmhwilds_packed.json",
 		"enums": "assets/raw_enums/enumsmhwilds.hpp",
-		"remaps": "assets/mhwilds/remapmhwilds.json"
+		"remaps": "assets/mhwilds/remapmhwilds.json",
+		"bundle": "assets/mhwilds/bundlemhwilds.bincode"
 	},
 	"MHST3": {
 		"rsz": "assets/mhst3/rszmhst3.json",

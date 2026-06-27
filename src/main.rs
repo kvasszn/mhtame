@@ -46,6 +46,7 @@ enum Command {
     DumpBytes,
     DumpJson,
     // Corrupt Fix maybe here? idk later
+    // TODO: when i add lua again, add running lua scripts from cli
 }
 
 pub fn main() -> anyhow::Result<()> {
