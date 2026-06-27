@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use strum::EnumString;
 use strum_macros::EnumIter;
 
 use crate::save::crypto;
@@ -17,7 +18,7 @@ macro_rules! define_games {
         ),* $(,)?
     ) => {
         #[repr(i32)]
-        #[derive(EnumIter, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
+        #[derive(EnumIter, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash, EnumString)]
         pub enum Game {
             $( $variant, )*
         }

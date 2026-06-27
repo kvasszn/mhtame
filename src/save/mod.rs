@@ -66,6 +66,38 @@ impl SaveFlags {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct ParseSaveFlagsError(String);
+
+impl std::fmt::Display for ParseSaveFlagsError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::error::Error for ParseSaveFlagsError {}
+
+impl std::str::FromStr for SaveFlags {
+    type Err = ParseSaveFlagsError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut flags = SaveFlags::empty();
+
+        for part in s.split('|') {
+            match part.trim() {
+                "BLOWFISH" => flags |= SaveFlags::BLOWFISH,
+                "HAS_ID"   => flags |= SaveFlags::HAS_ID,
+                "CITRUS"   => flags |= SaveFlags::CITRUS,
+                "DEFLATE"  => flags |= SaveFlags::DEFLATE,
+                "MANDARIN" | "LIME" => flags |= SaveFlags::MANDARIN, 
+                "" => continue, 
+                unknown => return Err(ParseSaveFlagsError(format!("Unknown flag: '{}'", unknown))),
+            }
+        }
+        Ok(flags)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SaveOptions {
     pub game: Game,

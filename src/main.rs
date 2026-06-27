@@ -1,3 +1,144 @@
+use std::path::PathBuf;
 
-pub fn main() {
+use clap::{Parser, Subcommand};
+use ree_save_core::save::{SaveFile, SaveFlags, SaveOptions, game::Game};
+use anyhow::{anyhow, Context};
+
+#[derive(Parser, Debug)]
+#[command(name = "ree-save-cli")]
+#[command(version, about, long_about = None)]
+struct Cli {
+    #[arg(short, long)]
+    input: PathBuf,
+    #[arg(long, help = "ID to use for the save file")]
+    id: Option<u64>,
+    #[arg(short, long)]
+    output: Option<PathBuf>,
+    #[arg(short, long)]
+    overwrite: bool,
+    #[arg(short, long)]
+    game: Game,
+    #[arg(short, long)]
+    brute_force: bool,
+    #[arg(long)]
+    bf_start: Option<u64>,
+    #[arg(long)]
+    bf_count: Option<u64>,
+    #[arg(long)]
+    dump_raw: bool,
+    #[command(subcommand)]
+    command: Command
+}
+
+#[derive(Debug, Subcommand)]
+enum Command {
+    Convert {
+        #[arg(long)]
+        id: Option<u64>,
+        #[arg(long)]
+        citrus: Option<usize>,
+        #[arg(long)]
+        game: Option<Game>,
+        #[arg(long)]
+        flags: Option<SaveFlags>
+    },
+    ToPS5,
+    DumpBytes,
+    DumpJson,
+    // Corrupt Fix maybe here? idk later
+}
+
+pub fn main() -> anyhow::Result<()> {
+    env_logger::Builder::from_env(
+        env_logger::Env::default().default_filter_or("info,egui=info")
+    ).init();
+
+    let cli = Cli::parse();
+    println!("{:?}", cli);
+
+    let save_file_data = std::fs::read(&cli.input)?;
+
+    let mut read_opts = SaveOptions::new(cli.game);
+    read_opts.id = cli.id;
+    read_opts.dump = cli.dump_raw;
+
+    if cli.brute_force {
+        read_opts = read_opts.brute_force(0x0110000100000000, 0xffffffff);
+    }
+
+    if let Some(start) = cli.bf_start &&
+        let Some((s, _)) = read_opts.brute_force.as_mut() {
+        *s = start;
+    }
+
+    if let Some(count) = cli.bf_count &&
+        let Some((_, c)) = read_opts.brute_force.as_mut() {
+        *c = count;
+    }
+
+    let mut save_file = match SaveFile::read_save(save_file_data, &mut read_opts) {
+        Ok(s) => s,
+        Err(e) => return Err(anyhow!("Could not read save at {}: {e}", cli.input.display())),
+    };
+
+    if read_opts.brute_force.is_some() && let Some(id) = read_opts.id {
+        log::info!("Brute forced ID={}", id);
+    }
+
+    let mut output_file = cli.output.unwrap_or_else(|| cli.input.clone());
+    if output_file.is_dir() {
+        if let Some(file_name) = cli.input.file_name() {
+            output_file.push(file_name);
+        } else {
+            return Err(anyhow!("Input path does not have a valid filename to use for the directory output"));
+        }
+    }
+
+    if output_file.exists() {
+        if cli.overwrite {
+            log::warn!("overwrite is being used and {} already exists", output_file.display());
+        } else {
+            return Err(anyhow!("{} already exists. Use the --overwrite option to overwrite it", output_file.display()));
+        }
+    }
+
+    if let Some(parent_dir) = output_file.parent() {
+        std::fs::create_dir_all(parent_dir).with_context(|| {
+            format!(
+                "Failed to create output directory structure at: {}",
+                parent_dir.display()
+            )
+        })?;
+    }
+
+    match cli.command {
+        // TODO: add presets for Converting? i.e to/from PS5 for each game
+        Command::Convert { id, citrus, game, flags } => {
+            if let Some(flags) = flags {
+                save_file.flags = flags;
+            }
+            let mut write_opts = SaveOptions::new(game.unwrap_or(cli.game));
+            write_opts.id = id;
+            write_opts.curve_index = citrus;
+
+            log::info!("Writing save file to: {}", output_file.display());
+
+            // TODO: make this return Err out of main
+            let res = save_file.save(&output_file, &write_opts);
+            if let Err(e) = res {
+                log::error!("Error writing save: {e}");
+            }
+        },
+        Command::DumpBytes => {
+            save_file.flags = SaveFlags::empty();
+            let write_opts = SaveOptions::new(cli.game);
+            log::info!("Dumping save bytes to: {}", output_file.display());
+            let res = save_file.save(&output_file, &write_opts);
+            if let Err(e) = res {
+                log::error!("Error writing save: {e}");
+            }
+        }
+        _ => {}
+    }
+    Ok(())
 }
