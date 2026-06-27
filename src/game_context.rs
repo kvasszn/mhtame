@@ -10,6 +10,7 @@ pub type GameConfigs = HashMap<Game, GamePaths>;
 pub struct GamePaths {
     pub rsz: Option<String>,
     pub enums: Option<String>,
+    pub enums_raw: Option<String>,
     pub remaps: Option<String>,
     pub bundle: Option<String>,
 }
@@ -23,8 +24,8 @@ pub struct GameData {
 
 impl GameData {
     pub fn load(paths: &GamePaths, force_raw: bool) -> anyhow::Result<Self> {
-        let rsz:    RszMap                 = load_json(paths.rsz.as_ref(),    "rsz map")?;
-        let enums:  EnumMap                = load_enum(paths.enums.as_ref())?;
+        let rsz:    RszMap                 = load_json(paths.rsz.as_ref(), "rsz map")?;
+        let enums:  EnumMap                = load_json(paths.enums.as_ref(), "enums")?;
         let remaps: HashMap<String, Remap> = load_json(paths.remaps.as_ref(), "remaps")?;
 
         let bundle = if force_raw {

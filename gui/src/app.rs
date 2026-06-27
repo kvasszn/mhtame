@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, VecDeque}, sync::{Arc, RwLock, mpsc::{Receiver, Sender, channel}}};
+use std::{collections::{HashMap}, sync::{Arc, RwLock, mpsc::{Receiver, Sender, channel}}};
 
 use eframe::{
     self,
@@ -17,10 +17,9 @@ pub struct App {
     config_path: String,
     game_configs: GameConfigs,
     game_contexts: Arc<RwLock<HashMap<Game, GameData>>>,
-    game_load_queue: VecDeque<Game>,
-    loading_game: Option<Game>,
-    game_data_receiver: Receiver<GameData>,
-    game_data_sender: Sender<GameData>,
+    loading: HashMap<Game, Receiver<anyhow::Result<GameData>>>,
+    load_sender: Sender<Game>,
+    load_receiver: Receiver<Game>,
     copy_buffer: CopyBuffer
 }
 
@@ -30,30 +29,38 @@ impl App {
         let game_configs = load_game_configs("game_configs.json")
             .unwrap_or_default();
 
-        let (tx, rx) = channel::<GameData>();
+        let (tx, rx) = channel();
         Self {
             tree: dock_state,
             game_configs,
             config_path,
             game_contexts: Arc::new(RwLock::new(HashMap::new())),
             config,
-            game_load_queue: VecDeque::new(),
-            loading_game: None,
-            game_data_sender: tx,
-            game_data_receiver: rx,
+            loading: HashMap::new(),
+            load_sender: tx,
+            load_receiver: rx,
             copy_buffer: CopyBuffer::default()
         }
     }
 }
 
+
+
 impl eframe::App for App {
     fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
-        if let Some(game) = self.loading_game {
-            if let Ok(game_data) = self.game_data_receiver.try_recv() {
-                self.game_contexts.write().unwrap().insert(game, game_data);
-                self.loading_game = None;
-            }
+
+        while let Ok(game) = self.load_receiver.try_recv() {
+            self.request_game(game);
         }
+
+        self.loading.retain(|game, rx| {
+            match rx.try_recv() {
+                Ok(Ok(data)) => { self.game_contexts.write().unwrap().insert(*game, data); false }
+                Ok(Err(e))   => { log::error!("Failed to load {game:?}: {e}"); false }
+                Err(_)       => true
+            }
+        });
+
         TopBottomPanel::top("Menu Bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.label("REE Save Editor");
@@ -80,6 +87,12 @@ impl eframe::App for App {
                         Ok(config) => self.config = config,
                         Err(e) => log::error!("Error: {e}. Could not load config from path {}", self.config_path),
                     }
+
+                    match load_game_configs("game_configs.json") {
+                        Ok(config) => self.game_configs = config,
+                        Err(e) => log::error!("Error: {e}. Could not load game_config"),
+                    }
+                    self.game_contexts.write().unwrap().clear();
                 }
 
                 ui.menu_button("Options", |ui| {
@@ -87,12 +100,12 @@ impl eframe::App for App {
                     ui.menu_button(self.config.language.to_string(), |ui| {
                         use strum::IntoEnumIterator;
                         for option in Language::iter().filter(|x| INGAME_LANGUAGES.contains(x)) {
-                                ui.selectable_value(
-                                    &mut self.config.language,
-                                    option,
-                                    option.to_string(),
-                                );
-                            }
+                            ui.selectable_value(
+                                &mut self.config.language,
+                                option,
+                                option.to_string(),
+                            );
+                        }
                     });
                 });
             });
@@ -104,7 +117,7 @@ impl eframe::App for App {
                 let mut viewer = Viewer {
                     game_contexts: &self.game_contexts,
                     config: &self.config,
-                    game_load_queue: &mut self.game_load_queue,
+                    load_request: &self.load_sender,
                     copy_buffer: &mut self.copy_buffer
                 };
                 DockArea::new(&mut self.tree)
@@ -122,30 +135,21 @@ impl eframe::App for App {
         //log::info!("queue: {:?}", self.game_load_queue);
         //log::info!("loaded: {:?}", self.game_contexts.read().unwrap().keys());
 
-        if self.loading_game.is_none() && let Some(game) = self.game_load_queue.pop_front() 
-            && !self.game_contexts.read().unwrap().contains_key(&game) {
-            if let Some(game_config) = self.game_configs.get(&game) {
-                let game_config = game_config.clone();
-                let tx = self.game_data_sender.clone();
-                self.loading_game = Some(game);
-                std::thread::spawn(move || {
-                    log::info!("trying to load {:?} for {:?}", game_config, game);
-                    let game_data = match GameData::load(&game_config, false) {
-                        Ok(game_data) => game_data,
-                        Err(e) => {
-                            log::error!("{e}: Could not load game data {:?}", game_config);
-                            return;
-                        }
-                    };
+    }
+}
 
-                    let Ok(()) = tx.send(game_data) else {
-                        log::error!("Could not send game data"); // TODO: proper error from tx.send
-                                                                 // here
-                        return;
-                    };
-                });
-            }
-        }
+impl App {
+    fn request_game(&mut self, game: Game) {
+        if self.game_contexts.read().unwrap().contains_key(&game) { return; }
+        if self.loading.contains_key(&game) { return; }
+
+        let Some(config) = self.game_configs.get(&game).cloned() else { return };
+        let (tx, rx) = channel();
+        self.loading.insert(game, rx);
+
+        std::thread::spawn(move || {
+            tx.send(GameData::load(&config, false)).ok();
+        });
     }
 }
 

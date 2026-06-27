@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, VecDeque}, sync::{Arc, RwLock}};
+use std::{collections::{HashMap, VecDeque}, sync::{Arc, RwLock, mpsc::{Receiver, Sender}}};
 
 use eframe::egui::{Ui};
 use egui_dock::tab_viewer::OnCloseResponse;
@@ -12,7 +12,7 @@ use crate::{config::Config, tab::{self, TabType}};
 pub struct Viewer<'a> {
     pub game_contexts: &'a Arc<RwLock<HashMap<Game, GameData>>>,
     pub config: &'a Config,
-    pub game_load_queue: &'a mut VecDeque<Game>,
+    pub load_request: &'a Sender<Game>,
     pub copy_buffer: &'a mut CopyBuffer
 }
 
@@ -24,8 +24,8 @@ impl<'a> egui_dock::TabViewer for Viewer<'a> {
             match &mut tab.tab {
                 TabType::SaveFile(save_file) => {
                     let game_contexts = self.game_contexts.read().unwrap();
-                    if !game_contexts.contains_key(&save_file.game) && !self.game_load_queue.contains(&save_file.game) {
-                        self.game_load_queue.push_back(save_file.game);
+                    if !game_contexts.contains_key(&save_file.game)  {
+                        self.load_request.send(save_file.game).ok();
                     }
                     save_file.ui(ui, self.config, &game_contexts, self.copy_buffer);
                 }
