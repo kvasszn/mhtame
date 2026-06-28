@@ -1,10 +1,13 @@
 use std::{collections::HashMap, path::{Path, PathBuf}};
+use indexmap::IndexMap;
 use ree_lib::{assets::bundle::Bundle, enums::{EnumMap, load_enum_map}, rsz::RszMap};
 use serde::Deserialize;
 
 use crate::save::{game::Game, remap::{Remap, get_asset_paths}};
 
 pub type GameConfigs = HashMap<Game, GamePaths>;
+
+pub type Schemas = HashMap<String, Vec<(u32, String)>>;
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct GamePaths {
@@ -13,6 +16,35 @@ pub struct GamePaths {
     pub enums_raw: Option<String>,
     pub remaps: Option<String>,
     pub bundle: Option<String>,
+    #[serde(default, deserialize_with="deserialize_schemas")]
+    pub schemas: Schemas,
+}
+
+use serde::de::Error;
+
+pub fn deserialize_schemas<'de, D>(deserializer: D) -> Result<Schemas, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    // use indexmap to preserve order
+    let raw_data: HashMap<String, IndexMap<String, String>> = HashMap::deserialize(deserializer)?;
+    let mut parsed_schemas = HashMap::new();
+
+    for (schema_name, fields) in raw_data {
+        let mut parsed_fields = Vec::with_capacity(fields.len());
+
+        for (hex_key, class_name) in fields {
+            let clean_hex = hex_key.trim_start_matches("0x");
+            let hash_u32 = u32::from_str_radix(clean_hex, 16).map_err(|e| {
+                D::Error::custom(format!("Failed to parse hex string '{}': {}", hex_key, e))
+            })?;
+            parsed_fields.push((hash_u32, class_name));
+        }
+
+        parsed_schemas.insert(schema_name, parsed_fields);
+    }
+
+    Ok(parsed_schemas)
 }
 
 pub struct GameData {

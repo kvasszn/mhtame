@@ -265,7 +265,7 @@ impl FieldValue {
                 );
             }
         };
-        return Ok(value);
+        Ok(value)
     }
 
     pub fn write<W: Write + Seek>(&self, w: &mut W) -> Result<(), Box<dyn Error>> {

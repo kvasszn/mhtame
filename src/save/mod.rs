@@ -1,4 +1,4 @@
-//pub mod corrupt;
+pub mod corrupt;
 pub mod json;
 pub mod eval;
 pub mod crypto;

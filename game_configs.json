@@ -4,7 +4,13 @@
 		"enums": "assets/mhwilds/enumsmhwilds.json",
 		"enums_raw": "assets/raw_enums/enumsmhwilds.hpp",
 		"remaps": "assets/mhwilds/remapmhwilds.json",
-		"bundle": "assets/mhwilds/bundlemhwilds.bincode"
+		"bundle": "assets/mhwilds/bundlemhwilds.bincode",
+		"schemas": {
+			"UserSaveData": {
+				"0xdbe3f199": "app.savedata.cUserSaveData",
+				"0x85e904c1": "via.storage.saveService.SaveFileDetail"
+			}
+		}
 	},
 	"MHST3": {
 		"rsz": "assets/mhst3/rszmhst3.json",

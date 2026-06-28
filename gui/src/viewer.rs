@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, VecDeque}, sync::{Arc, RwLock, mpsc::{Receiver, Sender}}};
+use std::{collections::{HashMap}, sync::{Arc, RwLock, mpsc::{Sender}}};
 
 use eframe::egui::{Ui};
 use egui_dock::tab_viewer::OnCloseResponse;
